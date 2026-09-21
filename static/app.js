@@ -9,9 +9,12 @@ fetch('/api/config').then(r=>{if(!r.ok)throw Error();return r.json();}).then(c=>
   if(!c.configured)status('Add your API key to .env to get started.');
 }).catch(()=>status('Cannot reach the Python server. Please refresh.',true));
 function stopAudio(call){for(const source of call.sources){try{source.stop();}catch{}}call.sources.clear();call.next=call.audio?.currentTime||0;}
+// Silence while Jannet composes a reply must look like work in progress, never a frozen page.
+function waiting(call,on){clearTimeout(call.waitTimer);if(!on)return;status('Jannet is thinking…');
+  call.waitTimer=setTimeout(()=>{if(current===call&&!call.sources.size&&!call.ending)status('Still thinking… if she stays quiet, just say that again.');},9000);}
 function cleanup(call,message,error=false){
   if(current!==call)return;
-  current=null;clearTimeout(call.timer);clearTimeout(call.connectTimer);
+  current=null;clearTimeout(call.timer);clearTimeout(call.connectTimer);clearTimeout(call.waitTimer);
   call.stream?.getTracks().forEach(t=>t.stop());call.mic?.disconnect();call.input?.disconnect();call.micSilence?.disconnect();
   stopAudio(call);call.socket?.close();call.audio?.close().catch(()=>{});
   button.disabled=false;button.classList.remove('active');button.querySelector('span').textContent='Call Jannet';
@@ -33,8 +36,8 @@ function play(call,bytes){
   gain.gain.setValueAtTime(1,end-ramp);
   gain.gain.linearRampToValueAtTime(0,end);
   source.start(start);call.next=end;
-  call.sources.add(source);
-  source.onended=()=>{source.disconnect();gain.disconnect();call.sources.delete(source);if(current===call&&!call.sources.size&&!call.ending)status('Listening…');};
+  call.sources.add(source);clearTimeout(call.waitTimer);
+  source.onended=()=>{source.disconnect();gain.disconnect();call.sources.delete(source);if(current===call&&!call.sources.size&&!call.ending){clearTimeout(call.waitTimer);status('Listening…');}};
   status('Jannet is speaking · You can interrupt anytime');
 }
 
@@ -70,8 +73,10 @@ button.addEventListener('click',async()=>{
       const m=JSON.parse(data);
       if(m.type==='ready'){clearTimeout(call.connectTimer);call.ready=true;button.disabled=false;button.classList.add('active');button.querySelector('span').textContent='End call';document.querySelector('#conversation').hidden=false;status('Connected · Jannet will greet you');}
       if(m.type==='transcript')transcript(m);
-      if(m.type==='interrupted'){stopAudio(call);status('Listening…');}
-      if(m.type==='turn_complete'&&!call.sources.size)status('Listening…');
+      if(m.type==='thinking'&&!call.sources.size)waiting(call,true);
+      if(m.type==='stalled'&&!call.sources.size)status('Jannet has gone quiet — reconnecting her…');
+      if(m.type==='interrupted'){stopAudio(call);waiting(call,false);status('Listening…');}
+      if(m.type==='turn_complete'&&!call.sources.size){waiting(call,false);status('Listening…');}
       if(m.type==='booking'){
         const panel=document.querySelector('#booking');panel.replaceChildren();panel.hidden=false;
         const heading=document.createElement('strong');heading.textContent='Appointment confirmed';panel.append(heading);
