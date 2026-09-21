@@ -54,7 +54,7 @@ button.addEventListener('click',async()=>{
     call.audio=new AudioContext();await call.audio.resume();
     const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     if(current!==call){stream.getTracks().forEach(t=>t.stop());return;}call.stream=stream;
-    await call.audio.audioWorklet.addModule('/static/microphone.js');
+    await call.audio.audioWorklet.addModule('/static/microphone.js?v=3');
     if(current!==call)return;
     call.input=call.audio.createMediaStreamSource(stream);call.mic=new AudioWorkletNode(call.audio,'microphone');
     call.input.connect(call.mic);
