@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f5ef"><title>Clinic · Talk to Jannet</title><link rel="stylesheet" href="/static/style.css?v=2"></head>
+<body>
+<div class="page">
+<header class="masthead"><a class="brand" href="/" aria-label="Clinic home"><span class="brand-mark" aria-hidden="true">+</span><span><strong id="doctor">Dr Emily Carter</strong><small>CLINIC RECEPTION</small></span></a><span class="header-note">A little help, a little closer.</span></header>
+<main>
+<section class="welcome" aria-labelledby="welcome-title"><div class="eyebrow"><span></span> YOUR VIRTUAL RECEPTION DESK</div><h1 id="welcome-title">Good care starts<br>with a conversation.</h1><p class="intro">Meet Jannet, your clinic’s AI assistant. Find a time to visit and arrange your appointment, just by talking.</p><div class="steps"><div><span>01</span>Tell us what you need</div><div><span>02</span>Choose a time that suits you</div><div><span>03</span>Confirm your visit</div></div><p class="example">Not sure where to start?<br><q>I'd like to book a visit with <span id="example-doctor">Dr Emily Carter</span>.</q></p></section>
+<section class="call-panel" aria-label="Talk to your clinic assistant"><div class="panel-top"><span>LET’S TALK</span><span class="ai-label">AI assistant</span></div><div class="avatar" aria-hidden="true">J<span class="avatar-dot"></span></div><h2>This is Jannet.</h2><p class="panel-description">Here to help you plan your visit.</p><div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<button id="call" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.36 2.3.55 3.6.55a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.3.2 2.5.55 3.6a1 1 0 0 1-.25 1z"/></svg><span>Call Jannet</span><b aria-hidden="true">↗</b></button>
+<p id="status" role="status" aria-live="polite">Ready when you are</p><div class="panel-bottom"><span>Microphone required</span><span>Speak naturally</span></div>
+<section id="booking" hidden aria-label="Confirmed appointment"></section><details id="conversation" hidden><summary>Live conversation</summary><div id="transcript" role="log" aria-live="off"></div></details></section>
+</main>
+<footer><span>Appointment times shown in <strong id="timezone">Asia/Dhaka</strong></span><span>Your voice is processed by Google Gemini during the call.</span></footer>
+</div><script src="/static/app.js?v=2" defer></script></body></html>
