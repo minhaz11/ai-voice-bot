@@ -1,0 +1,19 @@
+# Secrets must never reach an image layer - both of these hold a live API key.
+.env
+env
+
+.git
+.gitignore
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+.claude/
+tests/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+demo-review.md
+Dockerfile
+.dockerignore
