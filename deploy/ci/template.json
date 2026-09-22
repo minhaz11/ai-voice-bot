@@ -1,0 +1,122 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "GitHub OIDC and restricted SSM deployment for Jannet",
+  "Parameters": {
+    "InstanceId": {
+      "Type": "AWS::EC2::Instance::Id"
+    },
+    "GitHubSubject": {
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "GitHubProvider": {
+      "Type": "AWS::IAM::OIDCProvider",
+      "Properties": {
+        "Url": "https://token.actions.githubusercontent.com",
+        "ClientIdList": [
+          "sts.amazonaws.com"
+        ]
+      }
+    },
+    "DeployDocument": {
+      "Type": "AWS::SSM::Document",
+      "Properties": {
+        "DocumentType": "Command",
+        "UpdateMethod": "NewVersion",
+        "Content": {
+          "schemaVersion": "2.2",
+          "description": "Deploy a main-branch Jannet commit with health check and rollback",
+          "parameters": {
+            "Commit": {
+              "type": "String",
+              "allowedPattern": "^[0-9a-f]{40}$",
+              "interpolationType": "ENV_VAR"
+            }
+          },
+          "mainSteps": [
+            {
+              "action": "aws:runShellScript",
+              "name": "deploy",
+              "inputs": {
+                "timeoutSeconds": "1200",
+                "runCommand": [
+                  "bash <<'JANNET_DEPLOY_SCRIPT'\n#!/usr/bin/env bash\n# Executed by the restricted SSM document; Commit is passed as an environment variable.\nset -euo pipefail\nsha=\"${SSM_Commit:?Missing commit}\"\n[[ \"$sha\" =~ ^[0-9a-f]{40}$ ]] || exit 2\nexec 9>/run/lock/jannet-deploy.lock\nflock -w 900 9\nrepo=/opt/jannet\nreleases=/opt/jannet-releases\ncurrent=/opt/jannet-current\nrelease=\"$releases/$sha\"\ntest -s /etc/jannet/app.env\nmountpoint -q /var/lib/jannet\n# Only commits already on this repository's main branch may be deployed.\ngit -C \"$repo\" fetch origin main\ngit -C \"$repo\" merge-base --is-ancestor \"$sha\" FETCH_HEAD\nmkdir -p \"$releases\"\nif [ ! -e \"$release/.ready\" ]; then\n    mkdir -p \"$release\"\n    git -C \"$repo\" archive \"$sha\" | tar -x -C \"$release\"\n    python3 -m venv \"$release/.venv\"\n    \"$release/.venv/bin/pip\" install --disable-pip-version-check -q -r \"$release/requirements.lock.txt\"\n    touch \"$release/.ready\"\nfi\n[ -L \"$current\" ] || ln -s \"$repo\" \"$current\"\nprevious=$(readlink -f \"$current\")\n# Runtime settings and the SQLite disk are outside all release directories.\nmkdir -p /etc/systemd/system/jannet.service.d\ncat > /etc/systemd/system/jannet.service.d/storage.conf <<'UNIT'\n[Service]\nWorkingDirectory=/opt/jannet-current\nExecStart=\nExecStart=/usr/bin/env DATABASE_PATH=/var/lib/jannet/appointments.sqlite3 /opt/jannet-current/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1\nUNIT\nsystemctl daemon-reload\nswitch_to() {\n    ln -sfn \"$1\" \"$current.next\"\n    mv -Tf \"$current.next\" \"$current\"\n}\nhealthy() {\n    for attempt in $(seq 1 45); do\n        if systemctl is-active --quiet jannet && curl -fsS --max-time 3 http://127.0.0.1:8000/api/config | python3 -c 'import json,sys; assert json.load(sys.stdin)[\"configured\"] is True' 2>/dev/null; then\n            return 0\n        fi\n        sleep 2\n    done\n    return 1\n}\nrollback() {\n    trap - ERR\n    switch_to \"$previous\"\n    systemctl restart jannet\n    if healthy; then echo 'Deployment failed; previous version restored.'; else echo 'Rollback health check failed; manual recovery required.'; fi\n    exit 1\n}\ntrap rollback ERR\nswitch_to \"$release\"\nsystemctl restart jannet\nhealthy\ntrap - ERR\nprintf '%s\\n' \"$sha\" > /var/lib/jannet/deployed-commit\n# Keep current and previous releases so repeated deployments do not fill the disk.\nfor old in \"$releases\"/*; do\n    [[ \"$(basename \"$old\")\" =~ ^[0-9a-f]{40}$ ]] || continue\n    if [ \"$old\" != \"$release\" ] && [ \"$old\" != \"$previous\" ]; then rm -rf -- \"$old\"; fi\ndone\necho \"Deployed $sha successfully.\"\n\nJANNET_DEPLOY_SCRIPT"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeployRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Federated": {
+                  "Ref": "GitHubProvider"
+                }
+              },
+              "Action": "sts:AssumeRoleWithWebIdentity",
+              "Condition": {
+                "StringEquals": {
+                  "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                  "token.actions.githubusercontent.com:sub": {
+                    "Ref": "GitHubSubject"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "DeployOnlyJannet",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "ssm:SendCommand",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocument}"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "ssm:GetCommandInvocation",
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "RoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "DeployRole",
+          "Arn"
+        ]
+      }
+    },
+    "DocumentName": {
+      "Value": {
+        "Ref": "DeployDocument"
+      }
+    }
+  }
+}
